@@ -2,7 +2,7 @@
 
 # write-like-me
 
-**Your agent stopped sounding like AI. Now make it sound like you.**
+**Your agent needs to stop sounding like AI. Make it sound like you.**
 
 [![GitHub stars](https://img.shields.io/github/stars/conorbronsdon/write-like-me?style=social)](https://github.com/conorbronsdon/write-like-me/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
