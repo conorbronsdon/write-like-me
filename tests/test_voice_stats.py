@@ -74,6 +74,27 @@ class ProfileAndCompare(unittest.TestCase):
         feats = {d["feature"] for d in compare(draft, prof)["drifts"]}
         self.assertNotIn("semicolon_per_1k", feats)
 
+    def test_short_draft_missing_one_expected_use_is_not_drift(self):
+        # Profile uses parentheses at ~4 per 1,000 words; a 150-word draft
+        # would expect well under one, so having none is not drift.
+        text = ("We moved the service in a weekend and it held. (Mostly.) " +
+                "The tests caught two bugs before launch and the rest were small. " * 20)
+        prof = build_profile({"a": text, "b": text, "c": text})
+        draft = "The tests caught two bugs before launch and the rest were small. " * 12
+        feats = {d["feature"] for d in compare(draft, prof)["drifts"]}
+        self.assertNotIn("paren_per_1k", feats)
+
+    def test_long_draft_missing_a_frequent_feature_still_drifts(self):
+        feats = {d["feature"] for d in compare(EVEN * 3, self.profile)["drifts"]}
+        self.assertIn("first_person_per_1k", feats)
+        self.assertIn("em_dash_per_1k", feats)
+
+    def test_ranges_are_rounded(self):
+        res = compare("One two three four five. " * 7, self.profile)
+        for d in res["drifts"]:
+            for v in d["range"]:
+                self.assertEqual(v, round(v, 2))
+
     def test_short_flag(self):
         self.assertTrue(compare("Too short.", self.profile)["short"])
 

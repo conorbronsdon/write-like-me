@@ -172,13 +172,15 @@ def build_profile(samples: dict[str, str], register: str | None = None) -> dict:
 
 def compare(draft: str, profile: dict) -> dict:
     m = measure(draft)
-    # One occurrence in a short draft is noise, never a drift on its own.
+    # One occurrence in a short draft is noise, never a drift on its own: a
+    # stray use is not too many, and a missing one is not too few.
     one_use = 1000 / m["words"] if m["words"] else 0.0
     drifts = []
     for key, label in FEATURES.items():
         lo, hi = profile["ranges"][key]
         if key.endswith("_per_1k"):
-            hi = max(hi, profile["pooled"][key] + one_use)
+            hi = round(max(hi, profile["pooled"][key] + one_use), 2)
+            lo = round(max(0.0, min(lo, profile["pooled"][key] - one_use)), 2)
         val = m[key]
         if val < lo or val > hi:
             drifts.append({"feature": key, "label": label, "draft": val,

@@ -10,5 +10,6 @@
 - `refine` mode: change one rule, test it on one paragraph, log it in the profile's change log.
 - Optional blind test during calibration: held-out sample vs. generated passage, judged by a fresh-context reader.
 - `write` and `edit` revise at most twice after `check`, then report what still drifts.
+- `compare` tolerates one missing use as well as one stray use: in a short draft, lacking a feature the profile uses less than once per draft length is not drift. Widened bounds are rounded.
 - Install is inert; anti-overcorrection rule (no typos, fake anecdotes, or invented experiences).
 - `scripts/voice_stats.py`: dependency-free measurement of sentence rhythm, punctuation rates, contractions, person, and openers; `profile` builds per-feature ranges from samples, `compare` flags drift and exits 1.

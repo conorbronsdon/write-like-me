@@ -56,11 +56,15 @@ python3 scripts/voice_stats.py compare examples/off-voice-draft.md --profile voi
 ```
 
 ```text
+note: draft is 113 words; measurements are noisy under 150.
+drift: Sentence length, mean (words): draft 12.56, profile 8.88 (range 5.96–11.79)
 drift: Sentence length, spread (std dev): draft 1.71, profile 6.2 (range 3.64–8.94)
 drift: Contractions per 1,000 words: draft 8.85, profile 40.08 (range 23.75–51.81)
 drift: First person (I/me/my) per 1,000 words: draft 0.0, profile 51.53 (range 33.85–64.39)
-...
+drift: Second person (you/your) per 1,000 words: draft 0.0, profile 24.81 (range 4.49–58.1)
 ```
+
+(The example samples total 524 words, so `profile` also marks this profile low confidence.)
 
 `compare` exits 1 on drift, so you can gate a draft in a script or CI.
 
