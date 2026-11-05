@@ -1,0 +1,111 @@
+---
+name: write-like-me
+description: Build a voice profile from someone's own writing samples, then draft, edit, or check text against it so the agent writes like that person instead of like a model. Use when asked to "write like me," "match my voice," "learn my writing style," "make this sound like me," "build a voice profile," or "does this sound like me." Measures the samples (sentence rhythm, punctuation, openers) and backs every rule with a quoted excerpt. Pairs with avoid-ai-writing, which removes AI patterns; this skill adds the writer's own.
+version: 0.1.0
+license: MIT
+compatibility: Any AI coding assistant that supports agentskills.io SKILL.md format (Claude Code, Cursor, Codex, OpenClaw, Hermes Agent, etc.). The optional measurement script needs Python 3.9+ and no packages; without it the skill estimates the same features by reading.
+metadata:
+  author: Conor Bronsdon
+  repository: https://github.com/conorbronsdon/write-like-me
+  tags: writing voice style editing personalization
+  agentskills_spec: "1.0"
+---
+
+# Write Like Me
+
+Removing AI patterns makes text sound less like a model. It does not make it sound like you. This skill does the second half: it builds a voice profile from your own writing, then uses that profile to draft, edit, and check.
+
+Every rule in the profile has to be backed by evidence: a measurement or a quoted excerpt from the samples. "Conversational but authoritative" with nothing under it is the kind of rule a model ignores, because it already believes it writes that way.
+
+## Modes
+
+- `calibrate`: read samples, measure them, write `voice.md` (and `voice.json` if the script ran). Run this once, and again when your writing changes.
+- `write` (default once a profile exists): draft new text in the profile's voice.
+- `edit`: rewrite existing text into the voice. Keep every fact, claim, and caveat.
+- `check`: compare a draft to the profile and report where it drifts. Do not rewrite unless asked.
+
+Look for an existing profile first: `voice.md` in the current project, then `~/.config/write-like-me/voice.md`. If none exists and the user asks to write or edit, offer to calibrate first. Without a profile, say that the output is a generic edit, not their voice.
+
+## Calibrate
+
+### 1. Collect samples
+
+Ask for 3 to 10 pieces the person wrote themselves, 1,500 words or more in total. Good samples:
+
+- Were written without AI help. Older work is fine; anything from before 2023 is safest.
+- Cover the register they want matched (a newsletter voice and a legal memo voice are different profiles).
+- Include at least one piece they are proud of. Ask which one; it becomes the reference sample.
+
+Refuse to calibrate from text the person did not write. Calibrating from someone else's work to imitate them is out of scope.
+
+If the samples total under 1,500 words, calibrate anyway but mark the profile `low confidence` and say why.
+
+### 2. Measure
+
+If the script is available, run it on the samples:
+
+```bash
+python3 scripts/voice_stats.py profile samples/*.md --out voice.json
+```
+
+It reports sentence and paragraph length (mean and spread), punctuation rates per 1,000 words (em dashes, semicolons, colons, parentheses, questions, exclamations), contraction rate, first- and second-person rates, and the most common sentence openers. Without the script, estimate the same features from a careful read and label them estimates.
+
+The spread of sentence length matters more than the mean. Human writing mixes short and long sentences. Model writing tends to keep them even.
+
+### 3. Read for what numbers can't show
+
+Read every sample in full. Record, each with at least one verbatim quote from the samples:
+
+- **Openings**: how pieces and paragraphs start. A question, a number, a scene, a blunt claim.
+- **Closings**: how pieces end. A summary, a question, an implication, a joke, a call to action.
+- **Signature moves**: recurring habits (asides in parentheses, one-line paragraphs, self-deprecation, naming specific people and numbers, analogies from a particular field).
+- **Vocabulary**: words and phrases they use often, and plain words they choose where others reach for fancier ones.
+- **Stance**: how they handle certainty. Do they hedge, or state positions flatly? Do they argue, explain, or tell stories?
+- **Absences**: things a model would do that they never do. Absences are the strongest rules, because they are the ones the model will break.
+
+Do not invent a habit to fill a section. If the samples don't show it, leave the section out.
+
+### 4. Ask only what the samples can't answer
+
+Ask at most five short questions, and only where the samples are silent or contradict each other. Typical ones: "Your posts never use emoji; is that a rule?" "You swear in two of the eight samples; keep or avoid?" "Who are you usually writing for?" Record each answer as a rule with the source `writer said`.
+
+### 5. Write the profile
+
+Write `voice.md` using [templates/voice.md](templates/voice.md). Rules:
+
+- Lead with a five-line summary the agent can hold in mind while drafting.
+- Every rule cites its evidence: a measurement from `voice.json`, a quoted excerpt, or `writer said`.
+- Include two or three reference excerpts of 50 to 150 words each, quoted exactly, with what each one shows.
+- Keep the whole profile under 200 lines. A profile too long to read before every draft will not be used.
+- Show the person the profile and ask what is wrong with it. Fix what they flag. They are the judge of their own voice.
+
+## Write and edit
+
+1. Read `voice.md` in full, including the reference excerpts.
+2. Draft (or edit). Match the measured rhythm: if their sentence lengths vary widely, vary yours; if they never use semicolons, don't.
+3. Apply the absences as hard rules.
+4. In `edit` mode, keep every fact, number, name, link, quote, and caveat. Change how it is said, not what is said. If a sentence can't move into the voice without changing its meaning, leave it and say so.
+5. Run `check` on your own output before returning it.
+
+Don't overdo it. Using every signature move in one paragraph is a parody of the writer. Use their habits at the rate the samples show.
+
+## Check
+
+Compare the draft to the profile:
+
+```bash
+python3 scripts/voice_stats.py compare draft.md --profile voice.json
+```
+
+The script flags each measured feature that falls outside the profile's range and exits 1 if any did. Then read the draft against the qualitative rules and the absences. Report:
+
+> **Mostly on voice. Two drifts: sentences are too even (spread 4.1 vs. the profile's 9.8), and the opening is a rhetorical question, which none of the 8 samples use.**
+
+followed by a short list of the specific sentences that drift and why. Lead with the verdict. Don't list features that passed.
+
+Short drafts (under about 150 words) give noisy measurements. Say so and weight the read over the numbers.
+
+## Pairing
+
+- [avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) removes AI patterns. Its built-in voice profiles (casual, professional, and so on) are generic registers; this profile is the writer's own. Run it after `write` or `edit`. Where the profile and avoid-ai-writing disagree (for example, the writer loves em dashes), the profile wins for that writer, and say so in the change summary.
+- [fact-check](https://github.com/conorbronsdon/fact-check) verifies claims. Run it before polishing anything you will publish.

@@ -1,0 +1,13 @@
+{
+  "name": "write-like-me",
+  "description": "Build a voice profile from your own writing samples, then draft, edit, or check text against it so the agent writes like you.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Conor Bronsdon"
+  },
+  "homepage": "https://github.com/conorbronsdon/write-like-me",
+  "repository": "https://github.com/conorbronsdon/write-like-me",
+  "license": "MIT",
+  "keywords": ["writing", "voice", "style", "personalization"],
+  "skills": ["./"]
+}
