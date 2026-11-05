@@ -101,7 +101,10 @@ A profile can pass every measurement and still produce text the writer's readers
 4. Record the result and the judge's reason in the profile's header. A judge who picks your passage, or can't tell, is a pass. One trial is weak evidence; say so, or run three on different held-out samples.
 5. Add the held-out sample back and recalibrate.
 
-The judge's reason is the useful part. "The second one hedges, and the reference samples never do" is a rule you missed.
+The judge's reason is the useful part. "The second one hedges, and the reference samples never do" is a rule you missed. Two lessons from running it:
+
+- **Discard tells about errors.** Judges often pick the human because of typos, a split word, or a tense slip. That is real, but the profile must never add errors to imitate it. Keep the tells about openings, structure, analogies, and rhythm.
+- **Don't use `compare` as the tiebreak.** The profile's ranges come from whole pieces, and a held-out excerpt (an opening section, say) can drift from them while being the writer's own words. In one trial the real excerpt drifted on two features and the imitation drifted on one. The judge, not the numbers, decides this test.
 
 ## Write and edit
 
