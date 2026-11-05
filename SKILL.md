@@ -39,7 +39,7 @@ Ask for 3 to 10 pieces the person wrote themselves, 1,500 words or more in total
 - Cover one register: a newsletter voice and a legal memo voice are different profiles. If the samples span registers (essays and LinkedIn posts, tech and politics), sort them by register first and calibrate each group with `--register <name>` into its own `voice.<name>.md`. Pooling registers makes every range wide enough that nothing drifts, which means `check` stops catching anything.
 - Include at least one piece they are proud of. Ask which one; it becomes the reference sample.
 
-Also ask whether they have **edit pairs**: an AI draft and the version they actually sent. They are the best evidence there is, because they show which way the writer pushes text. Two or three pairs are enough to start. Collect them as files; they are not samples (the sent version can be, if they wrote most of it).
+Also ask whether they have **edit pairs**: an AI draft and the version they actually sent. They are the best evidence there is, because they show which way the writer pushes text. Three or more pairs are enough to start. Collect them as files; they are not samples (the sent version can be, if they wrote most of it).
 
 Refuse to calibrate from text the person did not write. Calibrating from someone else's work to imitate them is out of scope.
 
@@ -60,7 +60,7 @@ The spread of sentence length matters more than the mean. Human writing mixes sh
 
 `profile` holds each sample out in turn and compares it to a profile built from the rest. A sample that drifts on three or more features gets a warning: it is probably a different register (an About page among essays, a rant among tutorials). Ask the writer whether it belongs before keeping it. The check finds one odd sample. It does not detect a corpus that is half one register and half another, so sorting by register in step 1 is still your job.
 
-`diff` reports which measured features the writer's edits moved, and in how many pairs, plus the words they cut and added. A feature that moved the same way in every pair is a rule, sourced `writer edited`. A word they cut in two or more pairs belongs under Never.
+`diff` reports which measured features the writer's edits moved, and in how many pairs, plus the words they cut and added. `diff` counts a pair as moving a feature only when the change is bigger than noise (1.5 per 1,000 words for rates, 10% for lengths), so deleting one word doesn't register as "shorter sentences." A feature that moved the same way in at least three pairs, and in every pair, is a rule sourced `writer edited`. With fewer pairs it is provisional. A word they cut in two or more pairs belongs under Probably never until the writer confirms it.
 
 ### 3. Read for what numbers can't show
 
@@ -107,7 +107,7 @@ The judge's reason is the useful part. "The second one hedges, and the reference
 
 1. Read `voice.md` in full, including the reference excerpts.
 2. Draft (or edit). Match the measured rhythm: if their sentence lengths vary widely, vary yours; if they never use semicolons, don't.
-3. Apply the absences as hard rules.
+3. Apply the confirmed absences as hard rules. Avoid the provisional ones too, unless the task clearly calls for one; if you use one, say so.
 4. In `edit` mode, keep every fact, number, name, link, quote, and caveat. Change how it is said, not what is said. If a sentence can't move into the voice without changing its meaning, leave it and say so.
 5. Run `check` on your own output before returning it. Fix what drifts, at most twice. If something still drifts after two revisions, return the draft anyway and list what is still off and why; a third pass usually trades one drift for another.
 

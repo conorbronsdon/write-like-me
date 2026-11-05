@@ -11,5 +11,8 @@
 - Optional blind test during calibration: held-out sample vs. generated passage, judged by a fresh-context reader.
 - `write` and `edit` revise at most twice after `check`, then report what still drifts.
 - `compare` tolerates one missing use as well as one stray use: in a short draft, lacking a feature the profile uses less than once per draft length is not drift. Widened bounds are rounded.
+- `diff` ignores changes smaller than noise (1.5 per 1,000 words for rates, 10% for lengths); a `writer edited` rule needs 3+ pairs.
+- First person now counts sentence-initial "My" and "Me" (it was case-sensitive).
+- `compare` and `diff` exit 2 on a file with no words instead of reporting drift.
 - Install is inert; anti-overcorrection rule (no typos, fake anecdotes, or invented experiences).
 - `scripts/voice_stats.py`: dependency-free measurement of sentence rhythm, punctuation rates, contractions, person, and openers; `profile` builds per-feature ranges from samples, `compare` flags drift and exits 1.

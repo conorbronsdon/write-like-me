@@ -50,6 +50,9 @@ MIN_WORDS = 150
 # Samples shorter than REGISTER_MIN_WORDS are too noisy to warn about.
 REGISTER_DRIFTS = 3
 REGISTER_MIN_WORDS = 2 * MIN_WORDS
+# A change smaller than this, in one edit pair, is noise (deleting one word).
+DIFF_MIN_RATE = ABS_SLACK
+DIFF_MIN_REL = 0.10
 
 # Function words say little about voice in a word-level edit diff.
 STOPWORDS = set("""a an and are as at be but by for from has have he her his i if in into is it
@@ -58,7 +61,7 @@ us was we were what when which who will with you your""".split())
 
 WORD = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z]+)*")
 CONTRACTION = re.compile(r"\b[A-Za-z]+['’](?:s|t|re|ve|ll|d|m)\b", re.I)
-FIRST = re.compile(r"\b(?:I|me|my|mine|myself)\b")
+FIRST = re.compile(r"\bI\b|\b(?i:me|my|mine|myself)\b")
 SECOND = re.compile(r"\b(?:you|your|yours|yourself)\b", re.I)
 SENT_END = re.compile(r"(?<=[.!?])[\"”’')\]]*\s+")
 FENCE = re.compile(r"^\s*(```|~~~)")
@@ -192,9 +195,14 @@ def edit_diff(pairs: list[tuple[str, str]]) -> dict:
     """Report what a writer's own edits changed across (AI draft, sent) pairs."""
     moves = {}
     for key, label in FEATURES.items():
+        moved = []
+        for before, after in pairs:
+            b, a = measure(before)[key], measure(after)[key]
+            floor = DIFF_MIN_RATE if key.endswith("_per_1k") else DIFF_MIN_REL * max(b, a)
+            moved.append(a - b if abs(a - b) > floor else 0.0)
         deltas = [measure(after)[key] - measure(before)[key] for before, after in pairs]
-        down = sum(1 for d in deltas if d < 0)
-        up = sum(1 for d in deltas if d > 0)
+        down = sum(1 for d in moved if d < 0)
+        up = sum(1 for d in moved if d > 0)
         if down or up:
             moves[key] = {"label": label, "mean_change": round(statistics.mean(deltas), 2),
                           "pairs_down": down, "pairs_up": up}
@@ -251,6 +259,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == "diff":
             files = [read(f) for f in args.files]
+            empty = [f for f, t in zip(args.files, files) if not measure(t)["words"]]
+            if empty:
+                raise ValueError(f"no words in {', '.join(empty)}")
             res = edit_diff(list(zip(files[::2], files[1::2])))
             if args.json:
                 print(json.dumps(res, indent=2, ensure_ascii=False))
@@ -265,7 +276,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("words added: " + ", ".join(f"{w} ({n})" for w, n in res["words_added"]))
             return 0
         profile = json.loads(read(args.profile))
-        result = compare(read(args.draft), profile)
+        draft = read(args.draft)
+        if not measure(draft)["words"]:
+            raise ValueError(f"no words in {args.draft}")
+        result = compare(draft, profile)
     except (OSError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

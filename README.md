@@ -46,7 +46,7 @@ A rule with none of those gets cut.
 
 ## What a check looks like
 
-> **Mostly off voice. Sentences are too even (spread 1.7 vs. your 6.2), and there's no "I" or "you" anywhere; your samples average 52 and 25 per 1,000 words.**
+> **Mostly off voice. Sentences are too even (spread 1.7 vs. your 6.2), and there's no "I" or "you" anywhere; your samples average 53 and 25 per 1,000 words.**
 
 The measurement half is a script you can run yourself:
 
@@ -60,19 +60,19 @@ note: draft is 113 words; measurements are noisy under 150.
 drift: Sentence length, mean (words): draft 12.56, profile 8.88 (range 5.96–11.79)
 drift: Sentence length, spread (std dev): draft 1.71, profile 6.2 (range 3.64–8.94)
 drift: Contractions per 1,000 words: draft 8.85, profile 40.08 (range 23.75–51.81)
-drift: First person (I/me/my) per 1,000 words: draft 0.0, profile 51.53 (range 33.85–64.39)
+drift: First person (I/me/my) per 1,000 words: draft 0.0, profile 53.44 (range 33.85–70.68)
 drift: Second person (you/your) per 1,000 words: draft 0.0, profile 24.81 (range 4.49–58.1)
 ```
 
 (The example samples total 524 words, so `profile` also marks this profile low confidence.)
 
-`compare` exits 1 on drift, so you can gate a draft in a script or CI.
+`compare` exits 1 on drift, so you can gate a draft in a script or CI. It's Python 3.9+ with no dependencies. The numbers catch rhythm and register; the skill reads for the rest (openings, closings, signature moves, what you never do).
 
 When you build a profile, `profile` also holds each sample out and checks it against the others. A sample that drifts on three or more features gets a warning, because it's probably a different register. In testing on one writer's 16 real samples (essays, columns, an About page), it flagged only the About page. It catches one odd sample out; it can't tell that a corpus is half essays and half LinkedIn posts. That's why the skill sorts samples by register first.
 
 ```bash
 python3 scripts/voice_stats.py diff ai-draft.md what-i-sent.md [more pairs ...]
-``` It's Python 3.9+ with no dependencies. The numbers catch rhythm and register; the skill reads for the rest (openings, closings, signature moves, what you never do).
+```
 
 ## Modes
 

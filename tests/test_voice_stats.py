@@ -45,6 +45,13 @@ class Measure(unittest.TestCase):
         self.assertEqual(m["em_dash_per_1k"], 0)
         self.assertEqual(m["colon_per_1k"], 0)
 
+    def test_first_person_counts_sentence_initial_my_and_me(self):
+        m = measure("My team shipped it. Me too. I agree.")
+        self.assertAlmostEqual(m["first_person_per_1k"], 3000 / 8, places=1)
+
+    def test_lowercase_i_is_not_first_person(self):
+        self.assertEqual(measure("Press i to insert text here.")["first_person_per_1k"], 0)
+
     def test_paragraph_mean(self):
         self.assertEqual(measure("A b. C d.\n\nE f.")["paragraph_mean"], 1.5)
 
@@ -148,6 +155,11 @@ class EditDiff(unittest.TestCase):
         self.assertNotIn("to", cut)
         self.assertNotIn("semicolon_per_1k", res["features"])
 
+    def test_one_word_edits_are_noise(self):
+        long_s = "The deploy finished and the team went home early that day " * 3
+        pairs = [(long_s + "quickly.", long_s + "."), (long_s + "honestly.", long_s + ".")]
+        self.assertEqual(edit_diff(pairs)["features"], {})
+
     def test_identical_pair_reports_nothing(self):
         res = edit_diff([(SENT, SENT)])
         self.assertEqual(res["features"], {})
@@ -191,6 +203,19 @@ class CLI(unittest.TestCase):
             self.assertIn("words cut: ", r.stdout)
             self.assertIn("leverage", r.stdout)
             self.assertEqual(self.run_cli("diff", a).returncode, 2)
+            empty = os.path.join(d, "empty.md")
+            open(empty, "w").close()
+            self.assertEqual(self.run_cli("diff", a, empty).returncode, 2)
+
+    def test_empty_draft_is_2(self):
+        with tempfile.TemporaryDirectory() as d:
+            prof, empty = os.path.join(d, "v.json"), os.path.join(d, "e.md")
+            with open(prof, "w") as fh:
+                json.dump(build_profile({"a": PUNCHY}), fh)
+            open(empty, "w").close()
+            r = self.run_cli("compare", empty, "--profile", prof)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("no words", r.stderr)
 
     def test_profile_warning_goes_to_stderr(self):
         with tempfile.TemporaryDirectory() as d:
