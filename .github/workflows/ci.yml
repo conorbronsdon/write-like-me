@@ -12,8 +12,13 @@ jobs:
   test:
     strategy:
       matrix:
-        python-version: ["3.9", "3.13"]
-    runs-on: ubuntu-latest
+        include:
+          # ubuntu-latest has no Python 3.9 build; 22.04 still does.
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.13"
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
