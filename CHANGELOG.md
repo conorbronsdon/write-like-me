@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-06)
 
 - First public version: `calibrate`, `write`, `edit`, and `check` modes; evidence-backed voice profile template (`templates/voice.md`) where every rule cites a measurement, a quoted excerpt, or the writer's own answer.
 - Register-aware profiles: sort samples by register, calibrate each with `--register` into `voice.<register>.md`; profile lookup picks the matching one.
