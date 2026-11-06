@@ -2,12 +2,21 @@
 """Measure writing style features and compare a draft to a voice profile.
 
 Usage:
-  python3 scripts/voice_stats.py profile samples/*.md --out voice.json
+  python3 scripts/voice_stats.py profile samples/*.md --out voice.json [--register NAME]
   python3 scripts/voice_stats.py compare draft.md --profile voice.json [--json]
+  python3 scripts/voice_stats.py diff ai-draft.md sent.md [ai2.md sent2.md ...] [--json]
 
-The profile stores per-sample measurements, the pooled value, and a range
-for each feature. compare exits 1 when any feature falls outside its range,
-0 when all are inside, and 2 on bad usage or unreadable input.
+profile stores per-sample measurements, the pooled value, and a range for
+each feature. It also holds each sample out in turn and compares it to a
+profile built from the others: a sample that drifts on several features is
+probably a different register and is reported as a warning.
+
+compare exits 1 when any feature falls outside its range, 0 when all are
+inside, and 2 on bad usage or unreadable input.
+
+diff takes pairs of (AI draft, version the writer actually sent) and reports
+which features and words the writer's edits moved, and in how many pairs.
+It always exits 0 (2 on bad input); it reports evidence, it does not judge.
 """
 from __future__ import annotations
 
@@ -37,10 +46,22 @@ FEATURES = {
 ABS_SLACK = 1.5
 REL_SLACK = 0.25
 MIN_WORDS = 150
+# A held-out sample drifting on this many features is likely another register.
+# Samples shorter than REGISTER_MIN_WORDS are too noisy to warn about.
+REGISTER_DRIFTS = 3
+REGISTER_MIN_WORDS = 2 * MIN_WORDS
+# A change smaller than this, in one edit pair, is noise (deleting one word).
+DIFF_MIN_RATE = ABS_SLACK
+DIFF_MIN_REL = 0.10
+
+# Function words say little about voice in a word-level edit diff.
+STOPWORDS = set("""a an and are as at be but by for from has have he her his i if in into is it
+its me my of on or our she so than that the their them then there these they this to
+us was we were what when which who will with you your""".split())
 
 WORD = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z]+)*")
 CONTRACTION = re.compile(r"\b[A-Za-z]+['’](?:s|t|re|ve|ll|d|m)\b", re.I)
-FIRST = re.compile(r"\b(?:I|me|my|mine|myself)\b")
+FIRST = re.compile(r"\bI\b|\b(?i:me|my|mine|myself)\b")
 SECOND = re.compile(r"\b(?:you|your|yours|yourself)\b", re.I)
 SENT_END = re.compile(r"(?<=[.!?])[\"”’')\]]*\s+")
 FENCE = re.compile(r"^\s*(```|~~~)")
@@ -103,9 +124,7 @@ def measure(text: str) -> dict:
     }
 
 
-def build_profile(samples: dict[str, str]) -> dict:
-    per = {name: measure(text) for name, text in samples.items()}
-    pooled = measure("\n\n".join(samples.values()))
+def feature_ranges(per: dict[str, dict], pooled: dict) -> dict[str, list[float]]:
     ranges = {}
     for key in FEATURES:
         vals = [m[key] for m in per.values() if m["words"]]
@@ -115,30 +134,87 @@ def build_profile(samples: dict[str, str]) -> dict:
         else:
             lo, hi = lo * (1 - REL_SLACK), hi * (1 + REL_SLACK)
         ranges[key] = [round(lo, 2), round(hi, 2)]
+    return ranges
+
+
+def holdout(samples: dict[str, str], per: dict[str, dict]) -> dict[str, list[str]]:
+    """Compare each sample to a profile built from the others."""
+    if len(samples) < 3:
+        return {}
+    out = {}
+    for name, text in samples.items():
+        rest = {k: v for k, v in samples.items() if k != name}
+        rest_per = {k: per[k] for k in rest}
+        rest_pooled = measure("\n\n".join(rest.values()))
+        prof = {"pooled": rest_pooled, "ranges": feature_ranges(rest_per, rest_pooled)}
+        out[name] = [d["feature"] for d in compare(text, prof)["drifts"]]
+    return out
+
+
+def build_profile(samples: dict[str, str], register: str | None = None) -> dict:
+    per = {name: measure(text) for name, text in samples.items()}
+    pooled = measure("\n\n".join(samples.values()))
+    held = holdout(samples, per)
+    warnings = [f"{name} drifts from the other samples on {len(feats)} features "
+                f"({', '.join(feats)}); it may be a different register. Profile it "
+                f"separately, or drop it from this profile."
+                for name, feats in held.items()
+                if len(feats) >= REGISTER_DRIFTS and per[name]["words"] >= REGISTER_MIN_WORDS]
     words = pooled["words"]
     return {
-        "version": 1,
+        "version": 2,
+        "register": register,
         "confidence": "low" if words < 1500 or len(samples) < 3 else "normal",
-        "samples": {k: {"words": v["words"]} for k, v in per.items()},
+        "samples": {k: {"words": v["words"], "holdout_drifts": held.get(k, [])}
+                    for k, v in per.items()},
+        "warnings": warnings,
         "pooled": pooled,
-        "ranges": ranges,
+        "ranges": feature_ranges(per, pooled),
     }
 
 
 def compare(draft: str, profile: dict) -> dict:
     m = measure(draft)
-    # One occurrence in a short draft is noise, never a drift on its own.
+    # One occurrence in a short draft is noise, never a drift on its own: a
+    # stray use is not too many, and a missing one is not too few.
     one_use = 1000 / m["words"] if m["words"] else 0.0
     drifts = []
     for key, label in FEATURES.items():
         lo, hi = profile["ranges"][key]
         if key.endswith("_per_1k"):
-            hi = max(hi, profile["pooled"][key] + one_use)
+            hi = round(max(hi, profile["pooled"][key] + one_use), 2)
+            lo = round(max(0.0, min(lo, profile["pooled"][key] - one_use)), 2)
         val = m[key]
         if val < lo or val > hi:
             drifts.append({"feature": key, "label": label, "draft": val,
                            "profile": profile["pooled"][key], "range": [lo, hi]})
     return {"words": m["words"], "short": m["words"] < MIN_WORDS, "drifts": drifts, "draft": m}
+
+
+def edit_diff(pairs: list[tuple[str, str]]) -> dict:
+    """Report what a writer's own edits changed across (AI draft, sent) pairs."""
+    moves = {}
+    for key, label in FEATURES.items():
+        moved = []
+        for before, after in pairs:
+            b, a = measure(before)[key], measure(after)[key]
+            floor = DIFF_MIN_RATE if key.endswith("_per_1k") else DIFF_MIN_REL * max(b, a)
+            moved.append(a - b if abs(a - b) > floor else 0.0)
+        deltas = [measure(after)[key] - measure(before)[key] for before, after in pairs]
+        down = sum(1 for d in moved if d < 0)
+        up = sum(1 for d in moved if d > 0)
+        if down or up:
+            moves[key] = {"label": label, "mean_change": round(statistics.mean(deltas), 2),
+                          "pairs_down": down, "pairs_up": up}
+    cut, added = Counter(), Counter()
+    for before, after in pairs:
+        b = Counter(w.lower() for w in WORD.findall(" ".join(paragraphs(before))))
+        a = Counter(w.lower() for w in WORD.findall(" ".join(paragraphs(after))))
+        keep = (lambda w: not w.isdigit() and w not in STOPWORDS)
+        cut.update(w for w in b if w not in a and keep(w))
+        added.update(w for w in a if w not in b and keep(w))
+    return {"pairs": len(pairs), "features": moves,
+            "words_cut": cut.most_common(15), "words_added": added.most_common(15)}
 
 
 def read(path: str) -> str:
@@ -154,14 +230,24 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("profile", help="measure samples and write a profile")
     p.add_argument("samples", nargs="+")
     p.add_argument("--out", help="write JSON here instead of stdout")
+    p.add_argument("--register", help="label for this profile, e.g. newsletter or linkedin")
     c = sub.add_parser("compare", help="compare a draft to a profile")
     c.add_argument("draft")
     c.add_argument("--profile", required=True)
     c.add_argument("--json", action="store_true")
+    d = sub.add_parser("diff", help="what the writer's edits changed: AI draft, sent version, ...")
+    d.add_argument("files", nargs="+", help="pairs: draft1 sent1 [draft2 sent2 ...]")
+    d.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    if args.cmd == "diff" and len(args.files) % 2:
+        print("error: diff needs pairs of files (AI draft, then the version you sent)",
+              file=sys.stderr)
+        return 2
     try:
         if args.cmd == "profile":
-            prof = build_profile({s: read(s) for s in args.samples})
+            prof = build_profile({s: read(s) for s in args.samples}, args.register)
+            for w in prof["warnings"]:
+                print(f"warning: {w}", file=sys.stderr)
             out = json.dumps(prof, indent=2, ensure_ascii=False)
             if args.out:
                 with open(args.out, "w", encoding="utf-8") as fh:
@@ -171,8 +257,29 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(out)
             return 0
+        if args.cmd == "diff":
+            files = [read(f) for f in args.files]
+            empty = [f for f, t in zip(args.files, files) if not measure(t)["words"]]
+            if empty:
+                raise ValueError(f"no words in {', '.join(empty)}")
+            res = edit_diff(list(zip(files[::2], files[1::2])))
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                return 0
+            print(f"{res['pairs']} pair(s). Positive change = the writer added more of it.")
+            for v in res["features"].values():
+                print(f"{v['label']}: mean change {v['mean_change']:+} "
+                      f"(down in {v['pairs_down']}, up in {v['pairs_up']} of {res['pairs']})")
+            if res["words_cut"]:
+                print("words cut: " + ", ".join(f"{w} ({n})" for w, n in res["words_cut"]))
+            if res["words_added"]:
+                print("words added: " + ", ".join(f"{w} ({n})" for w, n in res["words_added"]))
+            return 0
         profile = json.loads(read(args.profile))
-        result = compare(read(args.draft), profile)
+        draft = read(args.draft)
+        if not measure(draft)["words"]:
+            raise ValueError(f"no words in {args.draft}")
+        result = compare(draft, profile)
     except (OSError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

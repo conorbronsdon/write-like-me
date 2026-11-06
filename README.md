@@ -35,17 +35,18 @@ Removing AI patterns gets you neutral prose. It reads as if nobody wrote it, whi
 
 Most "write in my voice" prompts fail the same way. You paste three posts, the model writes "conversational, authoritative, punchy" into its notes, and every draft comes out conversational, authoritative, and punchy in exactly the way the model already writes. Adjectives don't constrain a model. Evidence does.
 
-So every rule this skill writes into your profile has to cite one of three things:
+So every rule this skill writes into your profile has to cite one of four things:
 
 - **A measurement** of your samples: how much your sentence lengths vary, how often you use em dashes, questions, contractions, "I," "you."
 - **A verbatim quote** from your samples showing the habit.
-- **Your own answer** to a question the samples couldn't settle ("you never use emoji; is that a rule?").
+- **Your own edits.** Give it an AI draft and the version you actually sent, and `diff` shows which way you push text: shorter sentences in 3 of 3 pairs, "leverage" cut every time.
+- **Your own answer** to a question the samples couldn't settle ("you never use emoji; is that a rule?"). Until you answer, a habit that's only missing from your samples stays marked *provisional*: absent from six posts might just be chance.
 
 A rule with none of those gets cut.
 
 ## What a check looks like
 
-> **Mostly off voice. Sentences are too even (spread 1.7 vs. your 6.2), and there's no "I" or "you" anywhere; your samples average 52 and 25 per 1,000 words.**
+> **Mostly off voice. Sentences are too even (spread 1.7 vs. your 6.2), and there's no "I" or "you" anywhere; your samples average 53 and 25 per 1,000 words.**
 
 The measurement half is a script you can run yourself:
 
@@ -55,13 +56,23 @@ python3 scripts/voice_stats.py compare examples/off-voice-draft.md --profile voi
 ```
 
 ```text
+note: draft is 113 words; measurements are noisy under 150.
+drift: Sentence length, mean (words): draft 12.56, profile 8.88 (range 5.96–11.79)
 drift: Sentence length, spread (std dev): draft 1.71, profile 6.2 (range 3.64–8.94)
 drift: Contractions per 1,000 words: draft 8.85, profile 40.08 (range 23.75–51.81)
-drift: First person (I/me/my) per 1,000 words: draft 0.0, profile 51.53 (range 33.85–64.39)
-...
+drift: First person (I/me/my) per 1,000 words: draft 0.0, profile 53.44 (range 33.85–70.68)
+drift: Second person (you/your) per 1,000 words: draft 0.0, profile 24.81 (range 4.49–58.1)
 ```
 
+(The example samples total 524 words, so `profile` also marks this profile low confidence.)
+
 `compare` exits 1 on drift, so you can gate a draft in a script or CI. It's Python 3.9+ with no dependencies. The numbers catch rhythm and register; the skill reads for the rest (openings, closings, signature moves, what you never do).
+
+When you build a profile, `profile` also holds each sample out and checks it against the others. A sample that drifts on three or more features gets a warning, because it's probably a different register. In testing on one writer's 16 real samples (essays, columns, an About page), it flagged only the About page. It catches one odd sample out; it can't tell that a corpus is half essays and half LinkedIn posts. That's why the skill sorts samples by register first.
+
+```bash
+python3 scripts/voice_stats.py diff ai-draft.md what-i-sent.md [more pairs ...]
+```
 
 ## Modes
 
@@ -69,8 +80,13 @@ drift: First person (I/me/my) per 1,000 words: draft 0.0, profile 51.53 (range 3
 - `write`: draft new text from the profile.
 - `edit`: rewrite existing text into your voice without changing any fact, number, name, or caveat.
 - `check`: report drift; no rewriting unless asked.
+- `refine`: after a draft misses, change one rule, test it on one paragraph, and log it in the profile.
 
-The profile format is in [templates/voice.md](templates/voice.md). Keep it in your project, or at `~/.config/write-like-me/voice.md` to use it everywhere.
+Calibrate can also run a **blind test**: it holds out one of your samples, writes a passage on the same topic, and asks a fresh judge which one you wrote. The judge's reason is usually a rule the profile missed.
+
+Installing the skill does nothing until you ask it to calibrate. It reads only what you point it at.
+
+The profile format is in [templates/voice.md](templates/voice.md). Keep it in your project, or at `~/.config/write-like-me/voice.md` to use it everywhere. With more than one register, name them `voice.newsletter.md`, `voice.linkedin.md`, and so on; the skill picks the one that fits the task.
 
 ## Where it fits
 
@@ -86,7 +102,8 @@ avoid-ai-writing's built-in voice profiles (casual, professional, technical, war
 
 - It calibrates only from writing you did yourself. Imitating a named third party is out of scope.
 - Under 1,500 words of samples, the profile is marked low confidence. Under about 150 words, a draft's measurements are noisy and the skill says so.
-- One register per profile. A newsletter voice and a legal-memo voice need separate profiles.
+- One register per profile. A newsletter voice and a legal-memo voice need separate profiles. Pooling them makes the ranges so wide that `check` stops catching drift.
+- The blind test is one judge and a few trials. It is a sanity check, not a measurement of how convincing the output is.
 
 ## More from me
 
