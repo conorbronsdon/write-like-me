@@ -92,7 +92,7 @@ The profile format is in [templates/voice.md](templates/voice.md). Keep it in yo
 
 | Step | Skill | Job |
 |---|---|---|
-| 1 | [fact-check](https://github.com/conorbronsdon/fact-check?utm_source=github&utm_medium=referral&utm_campaign=repo-readme&utm_content=write-like-me) | Are the claims true? |
+| 1 | fact-check (coming soon) | Are the claims true? |
 | 2 | **write-like-me** | Does it sound like you? |
 | 3 | [avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing?utm_source=github&utm_medium=referral&utm_campaign=repo-readme&utm_content=write-like-me) | Does it sound like a model? |
 
