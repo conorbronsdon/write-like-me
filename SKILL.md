@@ -150,4 +150,4 @@ Change one rule per refine. If the profile needs more than three changes at once
 ## Pairing
 
 - [avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) removes AI patterns. Its built-in voice profiles (casual, professional, and so on) are generic registers; this profile is the writer's own. Run it after `write` or `edit`. Where the profile and avoid-ai-writing disagree (for example, the writer loves em dashes), the profile wins for that writer, and say so in the change summary.
-- [fact-check](https://github.com/conorbronsdon/fact-check) verifies claims. Run it before polishing anything you will publish.
+- A fact-checking pass verifies claims. Run it before polishing anything you will publish.
