@@ -48,6 +48,7 @@
 - <rule>. Evidence: "<verbatim quote>" (<sample>)
 
 ## Never (hard rules: confirmed)
+<!-- `voice_stats.py export-style` turns an em dash, semicolon, or colon rule here into an avoid-ai-writing "never" rule, but only with "writer said" or "writer edited" evidence. -->
 - <absence>. Evidence: <"writer said", or "writer edited: cut in N of M pairs">
 
 ## Probably never (provisional: absent from the samples, not yet confirmed)

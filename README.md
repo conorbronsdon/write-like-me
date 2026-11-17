@@ -74,6 +74,12 @@ When you build a profile, `profile` also holds each sample out and checks it aga
 python3 scripts/voice_stats.py diff ai-draft.md what-i-sent.md [more pairs ...]
 ```
 
+To have avoid-ai-writing enforce your profile, export it as a `--style` config. Em dashes, semicolons, or colons you confirmed you never use become hard `"never"` rules there; absences seen only in your samples are left out.
+
+```bash
+python3 scripts/voice_stats.py export-style voice.json --md voice.md --out style.json
+```
+
 ## Modes
 
 - `calibrate`: samples in, `voice.md` (plus `voice.json`) out. Shows you the profile and asks what's wrong with it.

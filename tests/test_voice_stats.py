@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from voice_stats import build_profile, compare, edit_diff, measure  # noqa: E402
+from voice_stats import build_profile, compare, edit_diff, export_style, infer_quotes, measure  # noqa: E402
 
 PUNCHY = ("I tried it. It broke. So I read the logs for an hour, and the answer was "
           "sitting in line three the whole time — a typo in a config file nobody "
@@ -179,6 +179,145 @@ class EditDiff(unittest.TestCase):
         self.assertEqual(res["words_cut"], [])
 
 
+# Vendored from avoid-ai-writing at commit 465d00e0a6004851564e4ca1781eec11d582652e:
+#   examples/prose.json -> tests/fixtures/avoid-ai-writing-prose.json (verbatim)
+#   scripts/check-style.js KNOWN -> STYLE_MECHANICS below
+# https://github.com/conorbronsdon/avoid-ai-writing/tree/465d00e0a6004851564e4ca1781eec11d582652e
+STYLE_EXAMPLE = os.path.join(HERE, "fixtures", "avoid-ai-writing-prose.json")
+STYLE_MECHANICS = {
+    "quotes": ["straight", "curly"],
+    "headings": ["sentence", "title"],
+    "latinAbbrev": ["parentheses", "never", "any"],
+    "emDash": ["sparing", "deliberate", "never"],
+    "colons": ["never", "any"],
+    "semicolons": ["never", "any"],
+    "spellNumbersUpTo": int,
+    "serialComma": bool,
+}
+
+VOICE_MD = """# Voice profile: Sam
+
+## Summary (hold this in mind while drafting)
+
+1. Says the point first, then the evidence.
+2. Short punches between long explanations; spread 9.8 words.
+3. States positions flatly; rarely hedges.
+4. Names the specific tool, person, and number.
+5. No em dashes.
+
+## Never (hard rules: confirmed)
+{never}
+
+## Probably never (provisional: absent from the samples, not yet confirmed)
+{probably}
+"""
+NO_DASH = PUNCHY.replace(" — ", ", ").replace("I tried", "I'd tried")  # 0 em dashes
+ONE_DASH = NO_DASH + " Then — finally — done. "  # 2 dashes in 723 words
+LOW_DASH = NO_DASH * 2 + " Then — done. "  # 1 dash in 1,442 words
+
+
+def voice_md(never="", probably=""):
+    return VOICE_MD.format(never=never, probably=probably)
+
+
+class ExportStyle(unittest.TestCase):
+    def mech(self, samples, md=None):
+        return export_style(build_profile(samples), md)["style"]["mechanics"]
+
+    def test_confirmed_em_dash_absence_exports_never(self):
+        md = voice_md(never="- Em dashes. Evidence: writer said (2026-11-01).")
+        self.assertEqual(self.mech({"a": NO_DASH}, md)["emDash"], "never")
+
+    def test_writer_edited_absence_exports_never(self):
+        md = voice_md(never="- Semicolons. Evidence: writer edited: cut in 3 of 3 pairs.\n"
+                            "- Colons in prose. Evidence: writer said.")
+        mech = self.mech({"a": NO_DASH}, md)
+        self.assertEqual(mech["semicolons"], "never")
+        self.assertEqual(mech["colons"], "never")
+        self.assertNotIn("emDash", mech)
+
+    def test_provisional_absence_exports_nothing(self):
+        md = voice_md(probably="- Em dashes. Evidence: 0 of 3 samples.\n"
+                               "- Semicolons. Evidence: 0 of 3 samples.")
+        mech = self.mech({"a": NO_DASH}, md)
+        self.assertNotIn("emDash", mech)
+        self.assertNotIn("semicolons", mech)
+
+    def test_never_without_confirming_evidence_is_not_exported(self):
+        md = voice_md(never="- Em dashes. Evidence: 0 of 3 samples.")
+        res = export_style(build_profile({"a": NO_DASH}), md)
+        self.assertNotIn("emDash", res["style"]["mechanics"])
+        self.assertEqual(len(res["notes"]), 1)
+        self.assertIn("emDash", res["notes"][0])
+
+    def test_semicolon_rule_does_not_imply_colons(self):
+        md = voice_md(never="- Semicolons. Evidence: writer said.")
+        self.assertNotIn("colons", self.mech({"a": NO_DASH}, md))
+
+    def test_low_nonzero_rate_exports_sparing(self):
+        prof = build_profile({"a": LOW_DASH})
+        self.assertEqual(prof["pooled"]["em_dash_per_1k"], 0.69)
+        self.assertEqual(export_style(prof)["style"]["mechanics"]["emDash"], "sparing")
+
+    def test_normal_rate_exports_no_em_dash_key(self):
+        prof = build_profile({"a": ONE_DASH})
+        self.assertEqual(prof["pooled"]["em_dash_per_1k"], 2.77)
+        self.assertNotIn("emDash", export_style(prof)["style"]["mechanics"])
+        self.assertNotIn("emDash", self.mech({"a": PUNCHY}))
+
+    def test_zero_rate_alone_is_not_never(self):
+        self.assertNotIn("emDash", self.mech({"a": NO_DASH}))
+
+    def test_summary_becomes_register(self):
+        style = export_style(build_profile({"a": NO_DASH}, "newsletter"), voice_md())["style"]
+        self.assertEqual(style["register"][0], "Says the point first, then the evidence.")
+        self.assertEqual(len(style["register"]), 5)
+        self.assertEqual(style["name"], "Voice profile: Sam")
+        self.assertEqual(style["genre"], "newsletter")
+
+    def test_unfilled_template_summary_is_skipped(self):
+        with open(os.path.join(ROOT, "templates", "voice.md")) as fh:
+            style = export_style(build_profile({"a": NO_DASH}), fh.read())["style"]
+        self.assertNotIn("register", style)
+        self.assertEqual(style["mechanics"], {"quotes": "straight"})
+
+    def test_quotes_inferred_from_samples(self):
+        self.assertEqual(infer_quotes("He said “no” and didn’t."),
+                         {"double": "curly", "single": "curly"})
+        self.assertEqual(infer_quotes("He's 5'11\" tall."), {"double": None, "single": "straight"})
+        self.assertEqual(self.mech({"a": "It’s “fine,” she said. " * 30})["quotes"], "curly")
+        self.assertEqual(self.mech({"a": NO_DASH})["quotes"], "straight")
+
+    def test_mixed_quote_styles_export_nothing(self):
+        self.assertNotIn("quotes", self.mech({"a": "It's “fine,” she said. " * 30}))
+
+    def test_old_profile_without_quotes_still_exports(self):
+        prof = build_profile({"a": LOW_DASH})
+        del prof["quotes"]
+        res = export_style(prof)
+        self.assertEqual(res["style"]["mechanics"], {"emDash": "sparing"})
+        self.assertIn("quotes", res["notes"][0])
+
+    def test_output_matches_avoid_ai_writing_shape(self):
+        with open(STYLE_EXAMPLE) as fh:
+            example = json.load(fh)
+        md = voice_md(never="- Em dashes, semicolons and colons. Evidence: writer said.")
+        style = export_style(build_profile({"a": NO_DASH}, "newsletter"), md)["style"]
+        self.assertEqual(style["mechanics"], {"emDash": "never", "semicolons": "never",
+                                              "colons": "never", "quotes": "straight"})
+        self.assertLessEqual(set(style), set(example))
+        for key in style:
+            self.assertIs(type(style[key]), type(example[key]), key)
+        self.assertTrue(all(isinstance(r, str) for r in style["register"]))
+        self.assertLessEqual(set(example["mechanics"]), set(STYLE_MECHANICS))
+        for key, value in style["mechanics"].items():
+            allowed = STYLE_MECHANICS[key]
+            if isinstance(allowed, list):
+                self.assertIn(value, allowed, key)
+            else:
+                self.assertIs(type(value), allowed, key)
+
+
 class CLI(unittest.TestCase):
     def run_cli(self, *args):
         return subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "voice_stats.py"), *args],
@@ -242,6 +381,35 @@ class CLI(unittest.TestCase):
             self.assertEqual(r.returncode, 0)
             self.assertIn("s3.md", r.stderr)
             self.assertIn("different register", r.stderr)
+
+    def test_export_style_cli(self):
+        with tempfile.TemporaryDirectory() as d:
+            paths = []
+            for i in range(3):
+                p = os.path.join(d, f"s{i}.md")
+                with open(p, "w") as fh:
+                    fh.write(NO_DASH)
+                paths.append(p)
+            prof = os.path.join(d, "voice.json")
+            self.assertEqual(self.run_cli("profile", *paths, "--out", prof).returncode, 0)
+            # The .md beside voice.json is read by default.
+            with open(os.path.join(d, "voice.md"), "w") as fh:
+                fh.write(voice_md(never="- Em dashes. Evidence: writer said.",
+                                  probably="- Semicolons. Evidence: 0 of 3 samples."))
+            out = os.path.join(d, "style.json")
+            r = self.run_cli("export-style", prof, "--out", out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(out) as fh:
+                style = json.load(fh)
+            self.assertEqual(style["mechanics"], {"emDash": "never", "quotes": "straight"})
+            self.assertEqual(len(style["register"]), 5)
+            empty_md = os.path.join(d, "empty.md")
+            open(empty_md, "w").close()
+            r = self.run_cli("export-style", prof, "--md", empty_md)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(json.loads(r.stdout)["mechanics"], {"quotes": "straight"})
+            self.assertEqual(self.run_cli("export-style", empty_md).returncode, 2)
+            self.assertEqual(self.run_cli("export-style", "nope.json").returncode, 2)
 
     def test_missing_file_is_2(self):
         self.assertEqual(self.run_cli("compare", "nope.md", "--profile", "nope.json").returncode, 2)

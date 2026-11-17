@@ -5,6 +5,7 @@ Usage:
   python3 scripts/voice_stats.py profile samples/*.md --out voice.json [--register NAME]
   python3 scripts/voice_stats.py compare draft.md --profile voice.json [--json]
   python3 scripts/voice_stats.py diff ai-draft.md sent.md [ai2.md sent2.md ...] [--json]
+  python3 scripts/voice_stats.py export-style voice.json [--md voice.md] [--out style.json]
 
 profile stores per-sample measurements, the pooled value, and a range for
 each feature. It also holds each sample out in turn and compares it to a
@@ -17,11 +18,17 @@ inside, and 2 on bad usage or unreadable input.
 diff takes pairs of (AI draft, version the writer actually sent) and reports
 which features and words the writer's edits moved, and in how many pairs.
 It always exits 0 (2 on bad input); it reports evidence, it does not judge.
+
+export-style turns a profile into an avoid-ai-writing --style config, so its
+check-style.js can gate a draft on the writer's own mechanics. Hard "never"
+rules come only from confirmed absences in voice.md (evidence "writer said" or
+"writer edited"); provisional ones are not exported. Exits 0, or 2 on bad input.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import statistics
 import sys
@@ -53,6 +60,17 @@ REGISTER_MIN_WORDS = 2 * MIN_WORDS
 # A change smaller than this, in one edit pair, is noise (deleting one word).
 DIFF_MIN_RATE = ABS_SLACK
 DIFF_MIN_REL = 0.10
+
+# avoid-ai-writing's check-style.js allows one em dash per 1,000 words under
+# emDash "sparing", so a measured rate in (0, 1] exports as "sparing".
+SPARING_MAX_PER_1K = 1.0
+# Confirmed-absence evidence and the marks export-style can turn into "never".
+CONFIRMED = re.compile(r"writer (?:said|edited)", re.I)
+NEVER_MARKS = {
+    "emDash": re.compile(r"\bem[ -]?dash(?:es)?\b", re.I),
+    "semicolons": re.compile(r"\bsemi-?colons?\b", re.I),
+    "colons": re.compile(r"(?<!semi)(?<!semi-)\bcolons?\b", re.I),
+}
 
 # Function words say little about voice in a word-level edit diff.
 STOPWORDS = set("""a an and are as at be but by for from has have he her his i if in into is it
@@ -126,6 +144,32 @@ def measure(text: str) -> dict:
     }
 
 
+def infer_quotes(text: str) -> dict:
+    """Straight or curly, for double and single marks separately (apostrophes
+    count as single). Mirrors avoid-ai-writing's normalize-quotes.js inferQuotes:
+    a mark after a digit is a prime and is skipped, and a tie goes to the style
+    seen first. None when the text has no such mark."""
+    counts = {"double": {"straight": 0, "curly": 0}, "single": {"straight": 0, "curly": 0}}
+    first: dict = {}
+    body = "\n".join(paragraphs(text))
+    for i, ch in enumerate(body):
+        if ch not in "\"'“”‘’":
+            continue
+        if ch in "\"'" and i and body[i - 1].isdigit():
+            continue
+        kind = "double" if ch in "\"“”" else "single"
+        style = "straight" if ch in "\"'" else "curly"
+        counts[kind][style] += 1
+        first.setdefault(kind, style)
+    out = {}
+    for kind, c in counts.items():
+        if c["straight"] == c["curly"]:
+            out[kind] = first.get(kind)
+        else:
+            out[kind] = "straight" if c["straight"] > c["curly"] else "curly"
+    return out
+
+
 def feature_ranges(per: dict[str, dict], pooled: dict) -> dict[str, list[float]]:
     ranges = {}
     for key in FEATURES:
@@ -172,7 +216,72 @@ def build_profile(samples: dict[str, str], register: str | None = None) -> dict:
         "warnings": warnings,
         "pooled": pooled,
         "ranges": feature_ranges(per, pooled),
+        "quotes": infer_quotes("\n\n".join(samples.values())),
     }
+
+
+def md_sections(md: str) -> dict[str, list[str]]:
+    """Map each '## ' heading in voice.md to its non-blank, non-comment lines."""
+    md = re.sub(r"<!--.*?-->", "", md, flags=re.S)
+    out, cur = {}, None
+    for line in md.splitlines():
+        if line.startswith("## "):
+            cur = line[3:].strip()
+            out[cur] = []
+        elif cur is not None and line.strip():
+            out[cur].append(line.strip())
+    return out
+
+
+def export_style(profile: dict, voice_md: str | None = None) -> dict:
+    """Build an avoid-ai-writing --style config (name, genre, register, mechanics)."""
+    mechanics: dict = {}
+    notes: list[str] = []
+    name = "write-like-me voice profile"
+    register: list[str] = []
+    if voice_md is not None:
+        title = re.search(r"^# Voice profile:\s*(.+)$", voice_md, re.M)
+        if title and not title.group(1).strip().startswith("<"):
+            name = f"Voice profile: {title.group(1).strip()}"
+        for heading, lines in md_sections(voice_md).items():
+            if heading.lower().startswith("summary"):
+                for line in lines:
+                    m = re.match(r"\d+[.)]\s+(.*)", line)
+                    if m and not m.group(1).startswith("<"):
+                        register.append(m.group(1).strip())
+            elif heading.lower().startswith("never"):
+                for line in lines:
+                    if not line.startswith(("-", "*")):
+                        continue
+                    rule, _, evidence = line.lstrip("-* ").partition("Evidence:")
+                    for key, pat in NEVER_MARKS.items():
+                        if not pat.search(rule):
+                            continue
+                        if CONFIRMED.search(evidence):
+                            mechanics[key] = "never"
+                        else:
+                            notes.append(f"{key}: listed under Never without \"writer said\" or "
+                                         f"\"writer edited\" evidence; not exported")
+    if "emDash" not in mechanics:
+        rate = profile["pooled"]["em_dash_per_1k"]
+        if 0 < rate <= SPARING_MAX_PER_1K:
+            mechanics["emDash"] = "sparing"
+    quotes = profile.get("quotes")
+    if quotes is None:
+        notes.append("quotes: profile has no quote measurement (re-run profile); not exported")
+    elif len({v for v in quotes.values() if v}) == 1:
+        # check-style.js has one "quotes" key for double marks and apostrophes alike.
+        mechanics["quotes"] = next(v for v in quotes.values() if v)
+    elif any(quotes.values()):
+        notes.append(f"quotes: samples mix styles (double {quotes.get('double')}, "
+                     f"single {quotes.get('single')}); not exported")
+    style: dict = {"name": name}
+    if profile.get("register"):
+        style["genre"] = profile["register"]
+    if register:
+        style["register"] = register
+    style["mechanics"] = mechanics
+    return {"style": style, "notes": notes}
 
 
 def compare(draft: str, profile: dict) -> dict:
@@ -240,6 +349,11 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("diff", help="what the writer's edits changed: AI draft, sent version, ...")
     d.add_argument("files", nargs="+", help="pairs: draft1 sent1 [draft2 sent2 ...]")
     d.add_argument("--json", action="store_true")
+    e = sub.add_parser("export-style", help="write an avoid-ai-writing --style config")
+    e.add_argument("profile", help="voice.json from `profile`")
+    e.add_argument("--md", help="voice.md with the summary and confirmed absences "
+                                "(default: the .md beside the profile, if it exists)")
+    e.add_argument("--out", help="write JSON here instead of stdout")
     args = ap.parse_args(argv)
     if args.cmd == "diff" and len(args.files) % 2:
         print("error: diff needs pairs of files (AI draft, then the version you sent)",
@@ -256,6 +370,26 @@ def main(argv: list[str] | None = None) -> int:
                     fh.write(out + "\n")
                 print(f"wrote {args.out}: {prof['pooled']['words']} words from "
                       f"{len(prof['samples'])} samples, confidence {prof['confidence']}")
+            else:
+                print(out)
+            return 0
+        if args.cmd == "export-style":
+            profile = json.loads(read(args.profile))
+            md_path = args.md
+            if md_path is None:
+                guess = re.sub(r"\.json$", "", args.profile) + ".md"
+                md_path = guess if os.path.exists(guess) else None
+            if md_path is None:
+                print("note: no voice.md found; exporting measurements only "
+                      "(no never rules, no register). Pass --md.", file=sys.stderr)
+            res = export_style(profile, read(md_path) if md_path else None)
+            for n in res["notes"]:
+                print(f"note: {n}", file=sys.stderr)
+            out = json.dumps(res["style"], indent=2, ensure_ascii=False)
+            if args.out:
+                with open(args.out, "w", encoding="utf-8") as fh:
+                    fh.write(out + "\n")
+                print(f"wrote {args.out}: mechanics {json.dumps(res['style']['mechanics'])}")
             else:
                 print(out)
             return 0

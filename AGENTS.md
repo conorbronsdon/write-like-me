@@ -6,7 +6,8 @@ This repo ships one skill, `SKILL.md`, plus a profile template and an optional m
 
 - `SKILL.md`: the skill. The only file consumers need.
 - `templates/voice.md`: the profile format `calibrate` writes. Every rule in it cites evidence.
-- `scripts/voice_stats.py`: stdlib-only measurement. `profile` writes `voice.json` and warns (stderr) about samples that look like another register; `compare` exits 1 on drift, 0 on voice, 2 on bad input; `diff` reports what a writer's edits changed across (AI draft, sent) pairs and exits 0, or 2 on bad input.
+- `scripts/voice_stats.py`: stdlib-only measurement. `profile` writes `voice.json` and warns (stderr) about samples that look like another register; `compare` exits 1 on drift, 0 on voice, 2 on bad input; `diff` reports what a writer's edits changed across (AI draft, sent) pairs and exits 0, or 2 on bad input; `export-style` turns `voice.json` plus `voice.md` into an avoid-ai-writing `--style` config, exporting `never` only from confirmed absences.
+- `tests/fixtures/avoid-ai-writing-prose.json`: verbatim copy of avoid-ai-writing's `examples/prose.json` (source commit in the test). Refresh it, and `STYLE_MECHANICS` in the tests, if that schema changes.
 - `tests/test_voice_stats.py`: run with `python3 -m unittest discover -s tests -v`.
 - `tests/test_workflows.py`: CI supply-chain guard (same command). Every `uses:` in `.github/` is pinned to a full commit SHA, every workflow sets top-level `permissions:`, and `.github/dependabot.yml` watches `github-actions`.
 - `examples/samples/`: three short invented samples in one voice, and `examples/off-voice-draft.md`, a generic draft that must drift. The CLI test depends on both; keep them in sync.
