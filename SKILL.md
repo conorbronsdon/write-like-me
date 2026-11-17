@@ -150,4 +150,12 @@ Change one rule per refine. If the profile needs more than three changes at once
 ## Pairing
 
 - [avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) removes AI patterns. Its built-in voice profiles (casual, professional, and so on) are generic registers; this profile is the writer's own. Run it after `write` or `edit`. Where the profile and avoid-ai-writing disagree (for example, the writer loves em dashes), the profile wins for that writer, and say so in the change summary.
+
+  To make avoid-ai-writing enforce the profile's mechanics, export it as a `--style` config:
+
+  ```bash
+  python3 scripts/voice_stats.py export-style voice.json --md voice.md --out style.json
+  ```
+
+  A confirmed absence (under **Never**, evidence `writer said` or `writer edited`) of em dashes, semicolons, or colons becomes `"never"`, which avoid-ai-writing's `check-style.js` treats as a hard violation. Provisional absences are not exported. An em-dash rate above 0 and at most 1 per 1,000 words becomes `emDash: "sparing"` (advisory there). The five-line summary becomes `register`, and `quotes` is `straight` or `curly` when the samples use one style. `--md` defaults to the `.md` beside the `.json`.
 - A fact-checking pass verifies claims. Run it before polishing anything you will publish.
