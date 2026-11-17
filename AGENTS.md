@@ -8,6 +8,7 @@ This repo ships one skill, `SKILL.md`, plus a profile template and an optional m
 - `templates/voice.md`: the profile format `calibrate` writes. Every rule in it cites evidence.
 - `scripts/voice_stats.py`: stdlib-only measurement. `profile` writes `voice.json` and warns (stderr) about samples that look like another register; `compare` exits 1 on drift, 0 on voice, 2 on bad input; `diff` reports what a writer's edits changed across (AI draft, sent) pairs and exits 0, or 2 on bad input.
 - `tests/test_voice_stats.py`: run with `python3 -m unittest discover -s tests -v`.
+- `tests/test_workflows.py`: CI supply-chain guard (same command). Every `uses:` in `.github/` is pinned to a full commit SHA, every workflow sets top-level `permissions:`, and `.github/dependabot.yml` watches `github-actions`.
 - `examples/samples/`: three short invented samples in one voice, and `examples/off-voice-draft.md`, a generic draft that must drift. The CLI test depends on both; keep them in sync.
 - `.claude-plugin/plugin.json`: Claude Code plugin manifest. Its `version` must match the `SKILL.md` frontmatter `version`.
 
