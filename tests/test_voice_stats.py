@@ -45,6 +45,19 @@ class Measure(unittest.TestCase):
         self.assertEqual(m["em_dash_per_1k"], 0)
         self.assertEqual(m["colon_per_1k"], 0)
 
+    def test_byte_order_mark_does_not_hide_frontmatter(self):
+        body = "I went home. It was late.\n"
+        fm = "---\ntitle: A: b\ndate: 2024: x\n---\n"
+        m = measure("\ufeff" + fm + body)
+        self.assertEqual(m["words"], 6)
+        self.assertEqual(m["colon_per_1k"], 0)
+        self.assertEqual(m, measure(fm + body))
+
+    def test_byte_order_mark_without_frontmatter_keeps_text(self):
+        m = measure("\ufeffNote: I went home.\n---\nIt was late.\n")
+        self.assertEqual(m["words"], 7)
+        self.assertEqual(m["colon_per_1k"], 142.86)
+
     def test_first_person_counts_sentence_initial_my_and_me(self):
         m = measure("My team shipped it. Me too. I agree.")
         self.assertAlmostEqual(m["first_person_per_1k"], 3000 / 8, places=1)

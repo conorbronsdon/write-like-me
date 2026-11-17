@@ -70,6 +70,8 @@ STRIP = [re.compile(r"`[^`]*`"), re.compile(r"\]\([^)]*\)"), re.compile(r"https?
 
 
 def paragraphs(text: str) -> list[str]:
+    # A UTF-8 byte order mark (Notepad, some exports) would hide front matter.
+    text = text[1:] if text.startswith("\ufeff") else text
     lines, out, buf, in_code = text.splitlines(), [], [], False
     if lines and lines[0].strip() == "---":
         for i in range(1, len(lines)):
